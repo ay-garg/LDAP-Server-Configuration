@@ -1,0 +1,346 @@
+Ldap Server
+
+[root@master-1 ~]# subscription-manager register --username <user> --auto-attach
+
+
+[root@master-1 ~]# subscription-manager repos --enable="rhel-7-server-extras-rpms"
+
+
+[root@master-1 ~]# yum install -y openldap-servers openldap-clients openldap migrationtools.noarch
+
+
+[root@master-1 ~]# slappasswd -s redhat -n > /etc/openldap/password
+
+
+[root@master-1 ~]# openssl req -new -x509 -nodes -out /etc/openldap/certs/cert.pem -keyout /etc/openldap/certs/priv.pem -days 365
+Generating a 2048 bit RSA private key
+...+++
+................................+++
+writing new private key to '/etc/openldap/certs/priv.pem'
+-----
+You are about to be asked to enter information that will be incorporated
+into your certificate request.
+What you are about to enter is what is called a Distinguished Name or a DN.
+There are quite a few fields but you can leave some blank
+For some fields there will be a default value,
+If you enter '.', the field will be left blank.
+-----
+Country Name (2 letter code) [XX]:IN
+State or Province Name (full name) []:RAJASTHAN
+Locality Name (eg, city) [Default City]:KOTA
+Organization Name (eg, company) [Default Company Ltd]:REDHAT
+Organizational Unit Name (eg, section) []:SUPPORT
+Common Name (eg, your name or your server's hostname) []:ldap-server.redhat.com
+Email Address []:
+[root@master-1 ~]#
+
+[root@master-1 ~]# cd /etc/openldap/certs/
+
+
+[root@master-1 certs]# ls
+cert8.db  cert.pem  key3.db  password  priv.pem  secmod.db
+
+
+[root@master-1 certs]# chown ldap:ldap *
+
+
+[root@master-1 certs]# chmod 600 priv.pem
+
+
+[root@master-1 certs]# cd /usr/share/openldap-servers/
+
+
+[root@master-1 openldap-servers]# ls
+DB_CONFIG.example  slapd.ldif
+
+
+[root@master-1 openldap-servers]# cp  /usr/share/openldap-servers/DB_CONFIG.example  /var/lib/ldap/DB_CONFIG
+
+
+[root@master-1 openldap-servers]# chown ldap:ldap /var/lib/ldap/*
+
+
+[root@master-1 certs]# systemctl start slapd
+
+
+[root@master-1 certs]# slaptest
+config file testing succeeded
+
+
+[root@ldap-server certs]# systemctl restart slapd
+
+
+[root@ldap-server certs]# systemctl enable slapd
+
+
+[root@ldap-server certs]# cd /etc/openldap/schema/
+
+
+[root@ldap-server schema]# ldapadd -Y EXTERNAL -H ldapi:/// -D "cn=config" -f cosine.ldif
+SASL/EXTERNAL authentication started
+SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth
+SASL SSF: 0
+adding new entry "cn=cosine,cn=schema,cn=config"
+
+
+[root@ldap-server schema]# ldapadd -Y EXTERNAL -H ldapi:/// -D "cn=config" -f nis.ldif
+SASL/EXTERNAL authentication started
+SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth
+SASL SSF: 0
+adding new entry "cn=nis,cn=schema,cn=config"
+
+
+[root@ldap-server schema]# cd /etc/openldap/
+
+
+[root@ldap-server openldap]# ls
+certs  check_password.conf  ldap.conf  password  schema  slapd.d
+
+
+[root@ldap-server ~]# cat /etc/openldap/password
+{SSHA}irM43dHVmN+qzMWRgO69zvO8U9n4dDgI
+
+
+[root@ldap-server openldap]# vim /etc/openldap/changes.ldif
+
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: dc=redhat,dc=com
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=Manager,dc=redhat,dc=com
+
+dn: olcDatabase={2}hdb,cn=config
+changetype: modify
+replace: olcRootPW
+olcRootPW: {SSHA}irM43dHVmN+qzMWRgO69zvO8U9n4dDgI
+
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: /etc/openldap/certs/priv.pem
+
+dn: cn=config
+changetype: modify
+replace: olcTLSCertificateFile
+olcTLSCertificateFile: /etc/openldap/certs/cert.pem
+
+dn: cn=config
+changetype: modify
+replace: olcLogLevel
+olcLogLevel: -1
+
+dn: olcDatabase={1}monitor,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth" read by dn.base="cn=Manager,dc=redhat,dc=com" read by * none
+
+
+
+[root@ldap-server openldap]# ldapmodify -Y EXTERNAL -H ldapi:/// -f changes.ldif
+SASL/EXTERNAL authentication started
+SASL username: gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth
+SASL SSF: 0
+modifying entry "olcDatabase={2}hdb,cn=config"
+
+modifying entry "olcDatabase={2}hdb,cn=config"
+
+modifying entry "olcDatabase={2}hdb,cn=config"
+
+modifying entry "cn=config"
+
+modifying entry "cn=config"
+
+modifying entry "cn=config"
+
+modifying entry "olcDatabase={1}monitor,cn=config"
+
+[root@ldap-server openldap]# vim /etc/openldap/base.ldif
+
+[root@ldap-server openldap]# cat /etc/openldap/base.ldif
+dn: dc=redhat,dc=com
+dc: redhat
+objectClass: top
+objectClass: domain
+
+dn: ou=People,dc=redhat,dc=com
+objectClass: organizationalUnit
+ou: People
+ObjectClass: top
+
+dn: ou=Group,dc=redhat,dc=com
+objectClass: organizationalUnit
+ou: Group
+ObjectClass: Top
+
+[root@ldap-server openldap]# ldapadd -x -w redhat -D cn=Manager,dc=redhat,dc=com -f /etc/openldap/base.ldif
+adding new entry "dc=redhat,dc=com"
+
+adding new entry "ou=People,dc=redhat,dc=com"
+
+adding new entry "ou=Group,dc=redhat,dc=com"
+
+[root@ldap-server openldap]# mkdir /home/guests
+
+
+[root@ldap-server openldap]# useradd -d /home/guests/ldapuser1 ldapuser1
+
+
+[root@ldap-server openldap]# passwd ldapuser1
+Changing password for user ldapuser1.
+New password:
+BAD PASSWORD: The password is shorter than 8 characters
+Retype new password:
+passwd: all authentication tokens updated successfully.
+
+[root@ldap-server migrationtools]# ls
+migrate_aliases.pl          	migrate_all_nisplus_offline.sh  migrate_base.pl	migrate_netgroup_byhost.pl  migrate_profile.pl
+migrate_all_netinfo_offline.sh  migrate_all_nisplus_online.sh   migrate_common.ph  migrate_netgroup_byuser.pl  migrate_protocols.pl
+migrate_all_netinfo_online.sh   migrate_all_offline.sh      	migrate_fstab.pl   migrate_netgroup.pl     	migrate_rpc.pl
+migrate_all_nis_offline.sh  	migrate_all_online.sh       	migrate_group.pl   migrate_networks.pl     	migrate_services.pl
+migrate_all_nis_online.sh   	migrate_automount.pl        	migrate_hosts.pl   migrate_passwd.pl       	migrate_slapd_conf.pl
+
+[root@ldap-server migrationtools]# vi migrate_common.ph
+
+# Default DNS domain
+$DEFAULT_MAIL_DOMAIN = "redhat.com";
+
+# Default base
+$DEFAULT_BASE = "dc=redhat,dc=com";
+
+
+[root@ldap-server migrationtools]# grep ":10[0-9][1-9]" /etc/passwd
+ldapuser1:x:1001:1001::/home/guests/ldapuser1:/bin/bash
+
+
+[root@ldap-server migrationtools]# grep ":10[0-9][1-9]" /etc/passwd > passwd
+
+
+[root@ldap-server migrationtools]# ./migrate_passwd.pl passwd users.ldif
+
+
+[root@ldap-server migrationtools]# cat users.ldif
+dn: uid=ldapuser1,ou=People,dc=redhat,dc=com
+uid: ldapuser1
+cn: ldapuser1
+objectClass: account
+objectClass: posixAccount
+objectClass: top
+objectClass: shadowAccount
+userPassword: {crypt}$6$kz5pLB9C$QbEoWO1xYvkUvakHY3EfwZX7flZJoUqI/yeAs3F/q/QvU0u/aOOL7b0brt4tf6TJECOcq6cPhvZK/ZA4l4XUx/
+shadowLastChange: 18159
+shadowMin: 0
+shadowMax: 99999
+shadowWarning: 7
+loginShell: /bin/bash
+uidNumber: 1001
+gidNumber: 1001
+homeDirectory: /home/guests/ldapuser1
+
+
+[root@ldap-server migrationtools]# ldapadd -x -w redhat -D cn=Manager,dc=redhat,dc=com -f users.ldif
+adding new entry "uid=ldapuser1,ou=People,dc=redhat,dc=com"
+
+
+[root@ldap-server migrationtools]# grep ":10[0-9][1-9]" /etc/group
+ldapuser1:x:1001:
+
+
+[root@ldap-server migrationtools]# grep ":10[0-9][1-9]" /etc/group > group
+
+
+[root@ldap-server migrationtools]# ./migrate_group.pl group groups.ldif
+
+
+[root@ldap-server migrationtools]# cat groups.ldif
+dn: cn=ldapuser1,ou=Group,dc=redhat,dc=com
+objectClass: posixGroup
+objectClass: top
+cn: ldapuser1
+userPassword: {crypt}x
+gidNumber: 1001
+
+
+[root@ldap-server migrationtools]# ldapadd -x -w redhat -D cn=Manager,dc=redhat,dc=com -f groups.ldif
+adding new entry "cn=ldapuser1,ou=Group,dc=redhat,dc=com"
+
+[root@ldap-server migrationtools]# cd /etc/openldap/certs/
+
+
+[root@ldap-server certs]# ls
+cert8.db  cert.pem  key3.db  password  priv.pem  secmod.db
+
+
+[root@ldap-server certs]# scp cert.pem 10.x.x.x:/etc/openldap/cacerts
+The authenticity of host '10.x.x.x (10.x.x.x)' can't be established.
+ECDSA key fingerprint is SHA256:sLkz6b4xxxxxxxxxxxxxxxxxxxxxxxxxxxxx.
+ECDSA key fingerprint is MD5:4b:xx:xx:xx:xx:xx:xx:xx:xx:1d:42:64:12:41:9c:b0.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '10.x.x.x' (ECDSA) to the list of known hosts.
+root@10.x.x.x's password:
+cert.pem                                                                                                    	100% 1391   809.4KB/s   00:00    
+
+[root@ldap-server ~]# ldapsearch -x cn=ldapuser1 -b dc=redhat,dc=com
+
+
+[root@ldap-server ~]# yum -y install rpcbind nfs-utils
+
+
+[root@ldap-server ~]# vi /etc/exports
+/home/guests	*(rw,sync)
+
+
+[root@ldap-server ~]# systemctl start nfs rpcbind nfs-mountd
+
+
+[root@ldap-server ~]# systemctl enable nfs rpcbind nfs-mountd
+
+
+[root@ldap-server ~]# firewall-cmd --permanent --add-service=nfs --add-service=rpc-bind --add-service=mountd 
+
+
+[root@ldap-server ~]# firewall-cmd --reload 
+
+
+[root@ldap-server ~]# showmount -e
+Export list for ldap-server.redhat.com:
+/home/guests *
+
+
+
+----------------------------Client----------------------------------------------------------------------------------
+[root@client ~]# yum install openldap-clients nss-pam-ldapd pam_ldap nscd sssd* autofs
+
+
+[root@client ~]#authconfig --enableldap --enableldapauth --ldapserver=ldap://ldap-server.redhat.com --ldapbasedn="dc=redhat,dc=com" --enablecache --disablefingerprint --kickstart
+
+
+[root@ldap-client ~]# showmount -e 10.x.x.x
+Export list for 10.x.x.x:
+/home/guests *
+
+
+[root@ldap-client ~]# getent passwd ldapuser1
+ldapuser1:*:1001:1001:ldapuser1:/home/guests/ldapuser1:/bin/bash
+
+
+[root@ldap-client ~]# vi /etc/auto.master.d/ldapuser1.autofs
+/home/guests	/etc/auto.ldapuser1
+
+
+[root@ldap-client ~]# vi /etc/auto.ldapuser1
+*	-rw,sync	ldap-server.redhat.com:/home/guests/&
+
+
+[root@ldap-client ~]# systemctl restart autofs
+
+
+[root@ldap-client ~]# systemctl enable autofs
+
+
+[root@ldap-client ~]# su - ldapuser1
+
